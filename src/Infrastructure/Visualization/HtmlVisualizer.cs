@@ -1,5 +1,6 @@
 using src.Domain.Entities;
 using src.Infrastructure.IO;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -12,6 +13,10 @@ namespace src.Infrastructure.Visualization;
 /// </summary>
 public class HtmlVisualizer
 {
+    // Invariant culture shortcut — all JSON numbers must use '.' as decimal separator
+    private static string I(double v, string fmt) =>
+        v.ToString(fmt, CultureInfo.InvariantCulture);
+
     // ── Public API ────────────────────────────────────────────────────
 
     /// <summary>Generate from live results (e.g. benchmark mode).</summary>
@@ -55,9 +60,9 @@ public class HtmlVisualizer
         sb.Append('{');
         sb.Append($"\"algorithmName\":{JsonSerializer.Serialize(r.AlgorithmName)},");
         sb.Append($"\"tracksUsed\":{r.TracksUsed},");
-        sb.Append($"\"wireLength\":{r.TotalWireLength:F0},");
+        sb.Append($"\"wireLength\":{I(r.TotalWireLength, "F0")},");
         sb.Append($"\"conflictCount\":{r.ConflictDescriptions.Count},");
-        sb.Append($"\"executionMs\":{r.ExecutionTime.TotalMilliseconds:F3},");
+        sb.Append($"\"executionMs\":{I(r.ExecutionTime.TotalMilliseconds, "F3")},");
         sb.Append("\"segments\":[");
         var segs = r.AllSegments;
         for (int i = 0; i < segs.Count; i++)
@@ -99,9 +104,9 @@ public class HtmlVisualizer
         sb.Append('{');
         sb.Append($"\"algorithmName\":{JsonSerializer.Serialize(r.AlgorithmName)},");
         sb.Append($"\"tracksUsed\":{d.TracksUsed},");
-        sb.Append($"\"wireLength\":{d.WireLength:F0},");
+        sb.Append($"\"wireLength\":{I(d.WireLength, "F0")},");
         sb.Append($"\"conflictCount\":{d.ConflictCount},");
-        sb.Append($"\"executionMs\":{d.ExecutionMs:F3},");
+        sb.Append($"\"executionMs\":{I(d.ExecutionMs, "F3")},");
         sb.Append("\"segments\":[");
         for (int i = 0; i < d.Segments.Count; i++)
         {
