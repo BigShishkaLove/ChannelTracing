@@ -13,6 +13,7 @@ class Program
 {
     private static readonly ConsoleVisualizer _consoleViz = new();
     private static readonly SvgVisualizer _svgViz = new();
+    private static readonly HtmlVisualizer _htmlViz = new();
     private static readonly ChannelDataGenerator _generator = new();
     private static readonly ChannelFileReader _fileReader = new();
     private static readonly ChannelFileWriter _fileWriter = new();
@@ -48,6 +49,9 @@ class Program
                     break;
                 case "6":
                     GenerateTestData();
+                    break;
+                case "7":
+                    RunComparison();
                     break;
                 case "0":
                     running = false;
@@ -88,6 +92,7 @@ class Program
         Console.WriteLine("4. Run Benchmark (various sizes)");
         Console.WriteLine("5. Generate Channel with Conflicts");
         Console.WriteLine("6. Generate Test Data Files");
+        Console.WriteLine("7. Compare Algorithms (HTML Report)");
         Console.WriteLine("0. Exit");
         Console.Write("\nYour choice: ");
     }
@@ -108,6 +113,9 @@ class Program
         var svgPath = Path.Combine("output", "simple_example.svg");
         Directory.CreateDirectory("output");
         _svgViz.SaveToFile(result, svgPath);
+        var htmlPath = Path.Combine("output", "report.html");
+        _htmlViz.SaveToFile(result, htmlPath);
+        Console.WriteLine($"HTML report: {htmlPath}");
         Console.WriteLine($"SVG visualization saved to: {svgPath}");
     }
 
@@ -175,6 +183,9 @@ class Program
             var svgPath = Path.Combine("output", "loaded_channel.svg");
             Directory.CreateDirectory("output");
             _svgViz.SaveToFile(result, svgPath);
+            var htmlPath = Path.Combine("output", "report.html");
+            _htmlViz.SaveToFile(result, htmlPath);
+            Console.WriteLine($"HTML report: {htmlPath}");
             Console.WriteLine($"SVG visualization saved to: {svgPath}");
         }
         catch (Exception ex)
@@ -242,6 +253,40 @@ class Program
         Directory.CreateDirectory("output");
         _svgViz.SaveToFile(result, svgPath);
         Console.WriteLine($"\nSVG visualization saved to: {svgPath}");
+    }
+
+    private static void RunComparison()
+    {
+        Console.WriteLine("\n=== Algorithm Comparison ===\n");
+
+        Console.Write("Enter channel width: ");
+        if (!int.TryParse(Console.ReadLine(), out int width) || width <= 0)
+        { Console.WriteLine("Invalid width!"); return; }
+
+        Console.Write("Enter number of nets: ");
+        if (!int.TryParse(Console.ReadLine(), out int netCount) || netCount <= 0)
+        { Console.WriteLine("Invalid net count!"); return; }
+
+        var channel = _generator.GenerateSimpleChannel(width, netCount);
+        _consoleViz.DisplayChannel(channel);
+
+        var result1 = new LeftEdgeAlgorithm().Route(channel);
+        var result2 = new LeftEdgeWithVcgAlgorithm().Route(channel);
+
+        _consoleViz.DisplayComparison(new List<RoutingResult> { result1, result2 });
+
+        Directory.CreateDirectory("output");
+        var htmlPath = Path.Combine("output", "comparison_report.html");
+        _htmlViz.SaveToFile(new[] { result1, result2 }, htmlPath);
+
+        Console.WriteLine($"HTML report saved to: {htmlPath}");
+
+        var fullPath = Path.GetFullPath(htmlPath);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName  = fullPath,
+            UseShellExecute = true
+        });
     }
 
     private static void GenerateTestData()
