@@ -8,17 +8,18 @@ namespace src;
 
 class Program
 {
-    private static readonly ConsoleVisualizer  _consoleViz = new();
-    private static readonly SvgVisualizer      _svgViz     = new();
-    private static readonly HtmlVisualizer     _htmlViz    = new();
-    private static readonly ChannelDataGenerator _generator = new();
-    private static readonly ChannelFileReader  _fileReader  = new();
-    private static readonly ChannelFileWriter  _fileWriter  = new();
+    private static readonly ConsoleVisualizer    _consoleViz = new();
+    private static readonly SvgVisualizer        _svgViz     = new();
+    private static readonly HtmlVisualizer       _htmlViz    = new();
+    private static readonly RoutingResultStore   _store      = new("output");
+    private static readonly ChannelDataGenerator _generator  = new();
+    private static readonly ChannelFileReader    _fileReader  = new();
+    private static readonly ChannelFileWriter    _fileWriter  = new();
 
-    private static readonly LeftEdgeAlgorithm  _leftEdge   = new();
-    private static readonly YoshimuraAlgorithm _yoshimura  = new();
+    private static readonly LeftEdgeAlgorithm  _leftEdge  = new();
+    private static readonly YoshimuraAlgorithm _yoshimura = new();
 
-    // ────────────────────────────────────────────────────────────────
+    // ── Entry point ──────────────────────────────────────────────────
     static void Main(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -38,7 +39,7 @@ class Program
                 case "4": RunFromFile();             break;
                 case "5": RunBenchmark();            break;
                 case "6": RunChannelWithConflicts(); break;
-                case "7": RunHtmlComparison();       break;
+                case "7": RunHtmlReport();           break;
                 case "8": GenerateTestData();        break;
                 case "0": running = false; Console.WriteLine("Goodbye!"); break;
                 default:  Console.WriteLine("Invalid choice. Please try again."); break;
@@ -53,7 +54,7 @@ class Program
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
+    // ── Welcome / menu ───────────────────────────────────────────────
     private static void PrintWelcome()
     {
         Console.Clear();
@@ -68,55 +69,47 @@ class Program
 
     private static void PrintMenu()
     {
+        var leOk   = _store.Exists(_leftEdge.Name)  ? " ✓" : "";
+        var yoshOk = _store.Exists(_yoshimura.Name) ? " ✓" : "";
+
         Console.WriteLine("\n=== Main Menu ===");
-        Console.WriteLine("1. Left-Edge Example   (10 columns, 4 nets)");
-        Console.WriteLine("2. Yoshimura Example   (10 columns, 4 nets)");
+        Console.WriteLine($"1. Left-Edge Example   (10 cols, 4 nets){leOk}");
+        Console.WriteLine($"2. Yoshimura Example   (10 cols, 4 nets){yoshOk}");
         Console.WriteLine("3. Custom Channel      (choose size & algorithm)");
         Console.WriteLine("4. Load Channel from File");
         Console.WriteLine("5. Benchmark           (various sizes, both algorithms)");
         Console.WriteLine("6. Channel with Conflicts");
-        Console.WriteLine("7. HTML Comparison Report");
+        Console.WriteLine("7. Generate HTML Report  ★" +
+                          (leOk != "" || yoshOk != "" ? "  (saved results available)" : "  (run algorithms first)"));
         Console.WriteLine("8. Generate Test Data Files");
         Console.WriteLine("0. Exit");
         Console.Write("\nYour choice: ");
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 1. Left-Edge example
-    // ────────────────────────────────────────────────────────────────
+    // ── 1. Left-Edge ─────────────────────────────────────────────────
     private static void RunSimpleExample()
     {
         Console.WriteLine("\n=== Left-Edge Example ===\n");
-
         var channel = _generator.GenerateSimpleChannel(width: 10, netCount: 4);
         _consoleViz.DisplayChannel(channel);
         PrintVcgInfo(channel);
 
-        var result = _leftEdge.Route(channel);
-        _consoleViz.DisplayRoutingResult(result);
-        SaveSvg(result, "simple_left_edge.svg");
+        RunSaveAndStore(_leftEdge, channel, "simple_left_edge");
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 2. Yoshimura example
-    // ────────────────────────────────────────────────────────────────
+    // ── 2. Yoshimura ─────────────────────────────────────────────────
     private static void RunYoshimuraExample()
     {
         Console.WriteLine("\n=== Yoshimura Example ===\n");
-
         var gen     = new ChannelDataGenerator(seed: 42);
         var channel = gen.GenerateSimpleChannel(width: 10, netCount: 4);
         _consoleViz.DisplayChannel(channel);
         PrintVcgInfo(channel);
 
-        var result = _yoshimura.Route(channel);
-        _consoleViz.DisplayRoutingResult(result);
-        SaveSvg(result, "yoshimura_example.svg");
+        RunSaveAndStore(_yoshimura, channel, "yoshimura_example");
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 3. Custom channel
-    // ────────────────────────────────────────────────────────────────
+    // ── 3. Custom channel ─────────────────────────────────────────────
     private static void RunCustomChannel()
     {
         Console.WriteLine("\n=== Custom Channel ===\n");
@@ -140,35 +133,26 @@ class Program
         switch (algoChoice)
         {
             case "2":
-                RunAndSave(_yoshimura, channel, "custom_yoshimura");
+                RunSaveAndStore(_yoshimura, channel, "custom_yoshimura");
                 break;
             case "3":
-                var leResult   = _leftEdge.Route(channel);
-                var yoshResult = _yoshimura.Route(channel);
-                _consoleViz.DisplayRoutingResult(leResult);
-                _consoleViz.DisplayRoutingResult(yoshResult);
-                _consoleViz.DisplayComparison(new List<RoutingResult> { leResult, yoshResult });
-                SaveSvg(leResult,   "custom_left_edge.svg");
-                SaveSvg(yoshResult, "custom_yoshimura.svg");
-                _fileWriter.WriteResultToFile(leResult,   "output/custom_left_edge_result.txt");
-                _fileWriter.WriteResultToFile(yoshResult, "output/custom_yoshimura_result.txt");
+                RunSaveAndStore(_leftEdge,  channel, "custom_left_edge");
+                RunSaveAndStore(_yoshimura, channel, "custom_yoshimura");
+                PrintComparisonFromStore();
                 break;
             default:
-                RunAndSave(_leftEdge, channel, "custom_left_edge");
+                RunSaveAndStore(_leftEdge, channel, "custom_left_edge");
                 break;
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 4. Load from file
-    // ────────────────────────────────────────────────────────────────
+    // ── 4. Load from file ─────────────────────────────────────────────
     private static void RunFromFile()
     {
         Console.WriteLine("\n=== Load from File ===\n");
 
         Console.Write("File path: ");
         var filePath = Console.ReadLine()?.Trim();
-
         if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
         { Console.WriteLine("File not found!"); return; }
 
@@ -180,39 +164,27 @@ class Program
 
             Console.Write("Algorithm? [1] Left-Edge  [2] Yoshimura  [3] Both : ");
             var algoChoice = Console.ReadLine()?.Trim();
-
             Directory.CreateDirectory("output");
 
             switch (algoChoice)
             {
                 case "2":
-                    RunAndSave(_yoshimura, channel, "file_yoshimura");
+                    RunSaveAndStore(_yoshimura, channel, "file_yoshimura");
                     break;
                 case "3":
-                    var leResult   = _leftEdge.Route(channel);
-                    var yoshResult = _yoshimura.Route(channel);
-                    _consoleViz.DisplayRoutingResult(leResult);
-                    _consoleViz.DisplayRoutingResult(yoshResult);
-                    _consoleViz.DisplayComparison(new List<RoutingResult> { leResult, yoshResult });
-                    SaveSvg(leResult,   "file_left_edge.svg");
-                    SaveSvg(yoshResult, "file_yoshimura.svg");
-                    _fileWriter.WriteResultToFile(leResult,   "output/file_left_edge_result.txt");
-                    _fileWriter.WriteResultToFile(yoshResult, "output/file_yoshimura_result.txt");
+                    RunSaveAndStore(_leftEdge,  channel, "file_left_edge");
+                    RunSaveAndStore(_yoshimura, channel, "file_yoshimura");
+                    PrintComparisonFromStore();
                     break;
                 default:
-                    RunAndSave(_leftEdge, channel, "file_left_edge");
+                    RunSaveAndStore(_leftEdge, channel, "file_left_edge");
                     break;
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-        }
+        catch (Exception ex) { Console.WriteLine($"Error: {ex.Message}"); }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 5. Benchmark
-    // ────────────────────────────────────────────────────────────────
+    // ── 5. Benchmark ──────────────────────────────────────────────────
     private static void RunBenchmark()
     {
         Console.WriteLine("\n=== Benchmark ===\n");
@@ -237,15 +209,12 @@ class Program
             yoshResults.Add(_yoshimura.Route(channel));
         }
 
-        PrintBenchmarkTable("Left-Edge", leResults,
-            testCases.Select(t => (t.Width, t.NetCount)).ToArray());
-        PrintBenchmarkTable("Yoshimura", yoshResults,
-            testCases.Select(t => (t.Width, t.NetCount)).ToArray());
+        PrintBenchmarkTable("Left-Edge", leResults, testCases.Select(t => (t.Width, t.NetCount)).ToArray());
+        PrintBenchmarkTable("Yoshimura", yoshResults, testCases.Select(t => (t.Width, t.NetCount)).ToArray());
 
         Console.WriteLine("\n=== Delta (Yoshimura − Left-Edge) ===");
         Console.WriteLine($"{"Size",-10} | {"ΔTracks",8} | {"ΔWire",10} | {"ΔTime ms",10}");
         Console.WriteLine(new string('-', 50));
-
         for (int i = 0; i < leResults.Count; i++)
         {
             var lm   = leResults[i].GetMetrics();
@@ -258,9 +227,7 @@ class Program
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 6. Conflicts demo
-    // ────────────────────────────────────────────────────────────────
+    // ── 6. Conflicts demo ─────────────────────────────────────────────
     private static void RunChannelWithConflicts()
     {
         Console.WriteLine("\n=== Channel with Conflicts ===\n");
@@ -273,93 +240,89 @@ class Program
         PrintVcgInfo(channel);
         Directory.CreateDirectory("output");
 
-        var leResult   = _leftEdge.Route(channel);
-        var yoshResult = _yoshimura.Route(channel);
-
-        Console.WriteLine("\n─── Left-Edge ───────────────────────────────────");
-        _consoleViz.DisplayRoutingResult(leResult);
-
-        Console.WriteLine("\n─── Yoshimura ───────────────────────────────────");
-        _consoleViz.DisplayRoutingResult(yoshResult);
-
-        _consoleViz.DisplayComparison(new List<RoutingResult> { leResult, yoshResult });
-
-        SaveSvg(leResult,   "conflicts_left_edge.svg");
-        SaveSvg(yoshResult, "conflicts_yoshimura.svg");
-        Console.WriteLine("SVG files saved to output/conflicts_*.svg");
+        RunSaveAndStore(_leftEdge,  channel, "conflicts_left_edge");
+        RunSaveAndStore(_yoshimura, channel, "conflicts_yoshimura");
+        PrintComparisonFromStore();
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 7. HTML comparison report
-    // ────────────────────────────────────────────────────────────────
-    private static void RunHtmlComparison()
+    // ── 7. HTML report ────────────────────────────────────────────────
+    private static void RunHtmlReport()
     {
-        Console.WriteLine("\n=== HTML Comparison Report ===\n");
+        Console.WriteLine("\n=== HTML Report ===\n");
 
-        Console.Write("Channel width  [default 12]: ");
-        var wInput   = Console.ReadLine()?.Trim();
-        int width    = int.TryParse(wInput, out int w) && w > 0 ? w : 12;
+        // Load whatever was saved last — order: Left-Edge, then Yoshimura
+        var stored = new List<StoredResult>();
 
-        Console.Write("Number of nets [default  5]: ");
-        var nInput   = Console.ReadLine()?.Trim();
-        int netCount = int.TryParse(nInput, out int n) && n > 0 ? n : 5;
+        foreach (var algoName in new[] { _leftEdge.Name, _yoshimura.Name })
+        {
+            var r = _store.TryLoad(algoName);
+            if (r is not null)
+            {
+                stored.Add(r);
+                Console.WriteLine($"  Loaded: {algoName}  " +
+                                  $"(saved {r.SavedAt[..16].Replace('T', ' ')})");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.DarkYellow;
+                Console.WriteLine($"  Missing: {algoName} — run it first (menu 1 or 2)");
+                Console.ResetColor();
+            }
+        }
 
-        var channel    = _generator.GenerateSimpleChannel(width, netCount);
-        _consoleViz.DisplayChannel(channel);
-        PrintVcgInfo(channel);
+        if (stored.Count == 0)
+        {
+            Console.WriteLine("\nNo saved results found. Run at least one algorithm first.");
+            return;
+        }
 
-        var leResult   = _leftEdge.Route(channel);
-        var yoshResult = _yoshimura.Route(channel);
-        _consoleViz.DisplayComparison(new List<RoutingResult> { leResult, yoshResult });
+        // Warn if results are from different channels
+        if (stored.Count == 2)
+        {
+            var c1 = stored[0].Channel;
+            var c2 = stored[1].Channel;
+            if (c1.Width != c2.Width || c1.Nets != c2.Nets)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine(
+                    "\n  ⚠  Warning: saved results are from different channels " +
+                    $"({c1.Width}×{c1.Nets} vs {c2.Width}×{c2.Nets}).\n" +
+                    "     The report will show them side-by-side but comparison may be misleading.");
+                Console.ResetColor();
+            }
+        }
 
         Directory.CreateDirectory("output");
         var htmlPath = Path.Combine("output", "comparison_report.html");
-        _htmlViz.SaveToFile(new[] { leResult, yoshResult }, htmlPath);
+        _htmlViz.SaveToFile(stored, htmlPath);
         Console.WriteLine($"\nHTML report saved to: {htmlPath}");
 
-        // Открыть в браузере
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName        = Path.GetFullPath(htmlPath),
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            Console.WriteLine("(Could not open browser automatically — open the file manually)");
-        }
+        OpenInBrowser(htmlPath);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // 8. Generate test data
-    // ────────────────────────────────────────────────────────────────
+    // ── 8. Generate test data ─────────────────────────────────────────
     private static void GenerateTestData()
     {
         Console.WriteLine("\n=== Generate Test Data ===\n");
         Directory.CreateDirectory("testdata");
 
-        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(10, 4),
-            "testdata/simple_10x4.txt");
-        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(20, 10),
-            "testdata/simple_20x10.txt");
-        _fileWriter.WriteToFile(_generator.GenerateChannelWithConflicts(15, 8, 2),
-            "testdata/conflicts_15x8.txt");
-        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(100, 50),
-            "testdata/large_100x50.txt");
+        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(10, 4),          "testdata/simple_10x4.txt");
+        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(20, 10),         "testdata/simple_20x10.txt");
+        _fileWriter.WriteToFile(_generator.GenerateChannelWithConflicts(15,8,2),  "testdata/conflicts_15x8.txt");
+        _fileWriter.WriteToFile(_generator.GenerateSimpleChannel(100, 50),        "testdata/large_100x50.txt");
 
         Console.WriteLine("Test data generated in 'testdata/':");
         Console.WriteLine("  simple_10x4.txt / simple_20x10.txt");
         Console.WriteLine("  conflicts_15x8.txt / large_100x50.txt");
     }
 
-    // ────────────────────────────────────────────────────────────────
-    // Helpers
-    // ────────────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────
 
-    /// <summary>Route, print to console and save SVG + TXT.</summary>
-    private static void RunAndSave(
+    /// <summary>
+    /// Route → display → save SVG + TXT → store JSON for HTML report.
+    /// This is the single place where all persistence happens.
+    /// </summary>
+    private static void RunSaveAndStore(
         src.Application.Interfaces.IRoutingAlgorithm algo,
         Channel channel,
         string baseName)
@@ -367,63 +330,93 @@ class Program
         var result  = algo.Route(channel);
         _consoleViz.DisplayRoutingResult(result);
 
+        Directory.CreateDirectory("output");
         var svgPath = Path.Combine("output", baseName + ".svg");
         var txtPath = Path.Combine("output", baseName + "_result.txt");
         _svgViz.SaveToFile(result, svgPath);
         _fileWriter.WriteResultToFile(result, txtPath);
+
+        // ← key step: persist JSON so RunHtmlReport() can read it later
+        _store.Save(result);
+
         Console.WriteLine($"Saved: {svgPath}  |  {txtPath}");
+        Console.WriteLine($"JSON:  {_store.FilePath(result.AlgorithmName)}");
     }
 
-    /// <summary>Save SVG to output/ directory.</summary>
-    private static void SaveSvg(RoutingResult result, string fileName)
+    /// <summary>
+    /// Prints a quick console comparison using whatever is currently stored.
+    /// </summary>
+    private static void PrintComparisonFromStore()
     {
-        Directory.CreateDirectory("output");
-        var path = Path.Combine("output", fileName);
-        _svgViz.SaveToFile(result, path);
-        Console.WriteLine($"SVG saved to: {path}");
+        var le   = _store.TryLoad(_leftEdge.Name);
+        var yosh = _store.TryLoad(_yoshimura.Name);
+        if (le is null || yosh is null) return;
+
+        Console.WriteLine();
+        Console.WriteLine($"{"Algorithm",-22} | {"Tracks",6} | {"Wire",10} | {"Conflicts",9} | {"Time ms",10}");
+        Console.WriteLine(new string('-', 70));
+        PrintStoredRow(le);
+        PrintStoredRow(yosh);
+        Console.WriteLine();
     }
 
-    /// <summary>Print Vertical Constraint Graph edges for the channel.</summary>
+    private static void PrintStoredRow(StoredResult r)
+    {
+        var d = r.Result;
+        Console.Write($"{r.AlgorithmName,-22} | {d.TracksUsed,6} | {d.WireLength,10:F0} | ");
+        if (d.ConflictCount > 0) { Console.ForegroundColor = ConsoleColor.Red; }
+        else                     { Console.ForegroundColor = ConsoleColor.Green; }
+        Console.Write($"{d.ConflictCount,9}");
+        Console.ResetColor();
+        Console.WriteLine($" | {d.ExecutionMs,10:F2}");
+    }
+
     private static void PrintVcgInfo(Channel channel)
     {
         Console.ForegroundColor = ConsoleColor.DarkYellow;
         Console.WriteLine("── Vertical Constraint Graph (VCG) ──");
-
-        bool anyEdge = false;
+        bool any = false;
         for (int col = 0; col < channel.Width; col++)
         {
-            int top = channel.TopRow[col];
-            int bot = channel.BottomRow[col];
+            int top = channel.TopRow[col], bot = channel.BottomRow[col];
             if (top != 0 && bot != 0 && top != bot)
             {
                 Console.WriteLine($"  Net {top,2} must be ABOVE Net {bot,2}  (column {col})");
-                anyEdge = true;
+                any = true;
             }
         }
-        if (!anyEdge)
-            Console.WriteLine("  (no vertical constraints)");
-
+        if (!any) Console.WriteLine("  (no vertical constraints)");
         Console.ResetColor();
         Console.WriteLine();
     }
 
-    /// <summary>Print benchmark table for one algorithm.</summary>
     private static void PrintBenchmarkTable(
-        string label,
-        List<RoutingResult> results,
-        (int Width, int NetCount)[] cases)
+        string label, List<RoutingResult> results, (int Width, int NetCount)[] cases)
     {
         Console.WriteLine($"\n=== {label} ===");
         Console.WriteLine($"{"Size",-10} | {"Tracks",6} | {"Wire",10} | {"Time ms",10}");
         Console.WriteLine(new string('-', 46));
-
         for (int i = 0; i < results.Count; i++)
         {
             var m    = results[i].GetMetrics();
             var size = $"{cases[i].Width}×{cases[i].NetCount}";
-            Console.WriteLine(
-                $"{size,-10} | {m.TracksUsed,6} | " +
-                $"{m.TotalWireLength,10:F0} | {m.ExecutionTimeMs,10:F2}");
+            Console.WriteLine($"{size,-10} | {m.TracksUsed,6} | {m.TotalWireLength,10:F0} | {m.ExecutionTimeMs,10:F2}");
+        }
+    }
+
+    private static void OpenInBrowser(string filePath)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName        = Path.GetFullPath(filePath),
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            Console.WriteLine("(Could not open browser automatically — open the file manually)");
         }
     }
 }
