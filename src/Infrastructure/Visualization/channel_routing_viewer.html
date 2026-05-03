@@ -213,6 +213,8 @@
   .canvas-wrap {
     position: relative;
     overflow: hidden;
+    flex: 1;
+    min-height: 0;
     background:
       radial-gradient(ellipse at 20% 20%, rgba(0,229,160,.03) 0%, transparent 60%),
       var(--bg);
@@ -301,7 +303,7 @@
   </aside>
 
   <!-- ── Main area ── -->
-  <div style="display:flex;flex-direction:column;overflow:hidden;">
+  <div style="display:flex;flex-direction:column;overflow:hidden;grid-row:1/3;min-height:0;">
 
     <div class="toolbar">
       <span class="toolbar-label">View</span>
