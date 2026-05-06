@@ -23,6 +23,7 @@ class App(tk.Tk):
         self.current_data = None
         self.current_segments = []
         self.current_page = 0
+        self.map_zoom = 1.0
 
         self._configure_style()
 
@@ -35,8 +36,13 @@ class App(tk.Tk):
     def _configure_style(self):
         style = ttk.Style(self)
         style.theme_use("clam")
+        self.configure(bg="#eef2ff")
+        style.configure(".", font=("Segoe UI", 10))
         style.configure("TLabelframe", padding=8)
+        style.configure("TLabelframe", background="#f8faff")
+        style.configure("TLabelframe.Label", font=("Segoe UI", 10, "bold"))
         style.configure("TNotebook", tabposition="n")
+        style.configure("TButton", padding=(10, 6))
         style.configure("Header.TLabel", font=("Segoe UI", 11, "bold"))
 
     def _build_controls(self, root: ttk.Frame):
@@ -66,7 +72,6 @@ class App(tk.Tk):
     def _build_views(self, root: ttk.Frame):
         actions = ttk.Frame(root)
         actions.pack(fill=tk.X, pady=8)
-        ttk.Button(actions, text="Open Result JSON", command=self.open_json).pack(side=tk.LEFT, padx=4)
         ttk.Button(actions, text="Clear", command=self.clear).pack(side=tk.LEFT, padx=4)
 
         self.notebook = ttk.Notebook(root)
@@ -107,6 +112,10 @@ class App(tk.Tk):
         self.next_button.pack(side=tk.LEFT, padx=4)
         self.page_label = ttk.Label(map_toolbar, text="No data", style="Header.TLabel")
         self.page_label.pack(side=tk.LEFT, padx=12)
+        ttk.Button(map_toolbar, text="−", width=3, command=lambda: self.change_zoom(0.85)).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Button(map_toolbar, text="+", width=3, command=lambda: self.change_zoom(1.15)).pack(side=tk.LEFT, padx=2)
+        self.zoom_label = ttk.Label(map_toolbar, text="100%")
+        self.zoom_label.pack(side=tk.LEFT, padx=(4, 0))
 
         self.map_stats = ttk.Label(map_toolbar, text="", foreground="#445")
         self.map_stats.pack(side=tk.RIGHT)
@@ -117,6 +126,7 @@ class App(tk.Tk):
         map_scroll_y = ttk.Scrollbar(map_container, orient="vertical", command=self.map_canvas.yview)
         map_scroll_x = ttk.Scrollbar(map_container, orient="horizontal", command=self.map_canvas.xview)
         self.map_canvas.configure(xscrollcommand=map_scroll_x.set, yscrollcommand=map_scroll_y.set)
+        self.map_canvas.bind("<Control-MouseWheel>", self.on_zoom_mousewheel)
         self.map_canvas.grid(row=0, column=0, sticky="nsew")
         map_scroll_y.grid(row=0, column=1, sticky="ns")
         map_scroll_x.grid(row=1, column=0, sticky="ew")
@@ -132,11 +142,6 @@ class App(tk.Tk):
         path = filedialog.askdirectory()
         if path:
             self.output_dir.set(path)
-
-    def open_json(self):
-        path = filedialog.askopenfilename(filetypes=[("JSON", "*.json"), ("All files", "*.*")])
-        if path:
-            self.show_json(path)
 
     def show_json(self, path: str):
         with open(path, "r", encoding="utf-8-sig") as f:
@@ -237,7 +242,8 @@ class App(tk.Tk):
 
         max_count = max(occ.values())
         left, top = 40, 180
-        chart_w, chart_h = max(900, min(1400, tracks * 22)), 320
+        visible_w = max(700, w - 120)
+        chart_w, chart_h = max(visible_w, min(2200, tracks * 18)), 320
         bar_w = max(3, chart_w / max(1, tracks))
 
         for t in range(tracks):
@@ -287,8 +293,8 @@ class App(tk.Tk):
 
         self.map_canvas.delete("all")
         margin_x, margin_y = 70, 40
-        track_h = 24
-        scale = 10
+        track_h = max(12, int(20 * self.map_zoom))
+        scale = max(3, int(8 * self.map_zoom))
         drawable_w = max(1000, width * scale)
         drawable_h = max(600, tracks * track_h)
 
@@ -304,11 +310,19 @@ class App(tk.Tk):
             x2 = margin_x + s.get("end", 0) * scale
             y = margin_y + track * track_h + track_h / 2
             color = f"#{(s.get('netId', 1) * 2654435761) & 0xFFFFFF:06x}"
-            self.map_canvas.create_line(x1, y, x2, y, fill=color, width=max(2, int(track_h * 0.45)))
+            self.map_canvas.create_line(x1, y, x2, y, fill=color, width=max(1, int(track_h * 0.3)))
 
         self.map_canvas.create_rectangle(margin_x, margin_y, margin_x + drawable_w, margin_y + drawable_h, outline="#94a3b8")
         self.map_canvas.create_text(margin_x, 16, text="Routing map by segment pages (horizontal only)", anchor="w", font=("Segoe UI", 12, "bold"))
         self.map_canvas.config(scrollregion=(0, 0, margin_x + drawable_w + 40, margin_y + drawable_h + 40))
+        self.zoom_label.config(text=f"{int(self.map_zoom * 100)}%")
+
+    def change_zoom(self, factor: float):
+        self.map_zoom = max(0.4, min(2.8, self.map_zoom * factor))
+        self.render_current_page()
+
+    def on_zoom_mousewheel(self, event):
+        self.change_zoom(1.12 if event.delta > 0 else 0.88)
 
     def prev_page(self):
         if self.current_page > 0:
@@ -325,11 +339,13 @@ class App(tk.Tk):
         self.current_data = None
         self.current_segments = []
         self.current_page = 0
+        self.map_zoom = 1.0
         self.summary_text.delete("1.0", tk.END)
         self.chart_canvas.delete("all")
         self.map_canvas.delete("all")
         self.page_label.config(text="No data")
         self.map_stats.config(text="")
+        self.zoom_label.config(text="100%")
 
 
 if __name__ == "__main__":
