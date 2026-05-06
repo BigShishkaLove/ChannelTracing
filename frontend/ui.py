@@ -8,6 +8,20 @@ from tkinter import filedialog, ttk, messagebox
 BACKEND_PROJECT = os.path.join("src", "src.csproj")
 PAGE_SEGMENTS = 250
 
+BG_APP    = "#0f1117"
+BG_PANEL  = "#161b27"
+BG_CARD   = "#1e2535"
+BORDER    = "#2d3748"
+TEXT_PRI  = "#e2e8f0"
+TEXT_MUT  = "#a0aec0"
+TEXT_HINT = "#718096"
+ACCENT    = "#818cf8"
+ACCENT2   = "#f472b6"
+COL_GREEN = "#34d399"
+COL_RED   = "#f87171"
+BAR_COLORS = ["#818cf8","#34d399","#f472b6","#fb923c",
+              "#38bdf8","#a78bfa","#4ade80","#facc15"]
+
 
 class App(tk.Tk):
     def __init__(self):
@@ -25,13 +39,72 @@ class App(tk.Tk):
         self.current_page = 0
         self.map_zoom = 1.0
 
-        self._configure_style()
+        self._apply_dark_theme()
 
-        root = ttk.Frame(self, padding=10)
+        root = ttk.Frame(self, padding=10, bg=BG_APP, style="TFrame")
         root.pack(fill=tk.BOTH, expand=True)
 
         self._build_controls(root)
         self._build_views(root)
+    
+    def _apply_dark_theme(self):
+        self.configure(bg=BG_APP)
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure(".",
+            background=BG_APP, foreground=TEXT_PRI,
+            fieldbackground=BG_CARD, bordercolor=BORDER,
+            troughcolor=BG_PANEL, font=("Segoe UI", 10))
+
+        style.configure("TFrame", background=BG_APP)
+        style.configure("Card.TFrame", background=BG_CARD, relief="flat")
+
+        style.configure("TLabel", background=BG_APP, foreground=TEXT_PRI)
+        style.configure("Muted.TLabel", background=BG_APP, foreground=TEXT_HINT)
+        style.configure("Header.TLabel", background=BG_APP,
+                        foreground=TEXT_PRI, font=("Segoe UI", 11, "bold"))
+
+        style.configure("TButton",
+            background=BG_CARD, foreground=TEXT_PRI,
+            bordercolor=BORDER, focuscolor=ACCENT, relief="flat", padding=(10, 6))
+        style.map("TButton",
+            background=[("active", BORDER)],
+            foreground=[("active", TEXT_PRI)])
+
+        style.configure("Accent.TButton",
+            background=ACCENT, foreground="#ffffff",
+            bordercolor=ACCENT, relief="flat", padding=(10, 6))
+        style.map("Accent.TButton",
+            background=[("active", "#6366f1")])
+
+        style.configure("TCombobox",
+            fieldbackground=BG_CARD, background=BG_CARD,
+            foreground=TEXT_PRI, arrowcolor=TEXT_MUT,
+            bordercolor=BORDER, selectbackground=ACCENT)
+
+        style.configure("TEntry",
+            fieldbackground=BG_CARD, foreground=TEXT_PRI,
+            insertcolor=TEXT_PRI, bordercolor=BORDER)
+
+        style.configure("TNotebook", background=BG_PANEL, bordercolor=BORDER)
+        style.configure("TNotebook.Tab",
+            background=BG_PANEL, foreground=TEXT_HINT,
+            padding=(14, 7), bordercolor=BORDER)
+        style.map("TNotebook.Tab",
+            background=[("selected", BG_APP)],
+            foreground=[("selected", ACCENT)])
+
+        style.configure("TScrollbar",
+            background=BG_PANEL, troughcolor=BG_APP,
+            arrowcolor=TEXT_HINT, bordercolor=BORDER)
+        style.map("TScrollbar", background=[("active", BORDER)])
+
+        style.configure("TSeparator", background=BORDER)
+        style.configure("TLabelframe", background=BG_APP, bordercolor=BORDER)
+        style.configure("TLabelframe.Label",
+            background=BG_APP, foreground=TEXT_MUT,
+            font=("Segoe UI", 10, "bold"))
 
     def _configure_style(self):
         style = ttk.Style(self)
@@ -46,54 +119,78 @@ class App(tk.Tk):
         style.configure("Header.TLabel", font=("Segoe UI", 11, "bold"))
 
     def _build_controls(self, root: ttk.Frame):
-        controls = ttk.LabelFrame(root, text="Backend Run")
-        controls.pack(fill=tk.X)
+        # Заголовок-разделитель
+        hdr = ttk.Frame(root, style="TFrame")
+        hdr.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(hdr, text="Параметры запуска", style="Muted.TLabel").pack(side=tk.LEFT)
+        ttk.Separator(hdr, orient="horizontal").pack(fill=tk.X, expand=True, padx=(8,0), pady=5)
+
+        controls = ttk.Frame(root, style="TFrame")
+        controls.pack(fill=tk.X, pady=(0, 8))
         controls.columnconfigure(1, weight=1)
 
-        ttk.Label(controls, text="Input file:").grid(row=0, column=0, padx=6, pady=6, sticky="w")
-        ttk.Entry(controls, textvariable=self.input_file).grid(row=0, column=1, padx=6, pady=6, sticky="ew")
-        ttk.Button(controls, text="Browse", command=self.pick_input).grid(row=0, column=2, padx=6, pady=6)
+        def make_row(parent, label_text, row):
+            ttk.Label(parent, text=label_text, style="Muted.TLabel").grid(
+                row=row, column=0, padx=(0,8), pady=4, sticky="w")
 
-        ttk.Label(controls, text="Output dir:").grid(row=1, column=0, padx=6, pady=6, sticky="w")
-        ttk.Entry(controls, textvariable=self.output_dir).grid(row=1, column=1, padx=6, pady=6, sticky="ew")
-        ttk.Button(controls, text="Browse", command=self.pick_output).grid(row=1, column=2, padx=6, pady=6)
+        make_row(controls, "Входной файл:", 0)
+        ttk.Entry(controls, textvariable=self.input_file).grid(
+            row=0, column=1, pady=4, sticky="ew")
+        ttk.Button(controls, text="Обзор", command=self.pick_input).grid(
+            row=0, column=2, padx=(8,0), pady=4)
 
-        ttk.Label(controls, text="Algorithm:").grid(row=2, column=0, padx=6, pady=6, sticky="w")
-        ttk.Combobox(
-            controls,
-            textvariable=self.algorithm,
-            values=["left", "yoshimura"],
-            state="readonly",
-            width=24,
-        ).grid(row=2, column=1, padx=6, pady=6, sticky="w")
+        make_row(controls, "Выходная папка:", 1)
+        ttk.Entry(controls, textvariable=self.output_dir).grid(
+            row=1, column=1, pady=4, sticky="ew")
+        ttk.Button(controls, text="Обзор", command=self.pick_output).grid(
+            row=1, column=2, padx=(8,0), pady=4)
 
-        ttk.Button(controls, text="Run backend + Open result", command=self.run_backend_and_open).grid(row=2, column=2, padx=6, pady=6)
+        make_row(controls, "Алгоритм:", 2)
+        ttk.Combobox(controls, textvariable=self.algorithm,
+                    values=["left", "yoshimura"],
+                    state="readonly", width=20).grid(
+            row=2, column=1, pady=4, sticky="w")
+        ttk.Button(controls, text="▶  Запустить",
+                command=self.run_backend_and_open,
+                style="Accent.TButton").grid(
+            row=2, column=2, padx=(8,0), pady=4)
 
     def _build_views(self, root: ttk.Frame):
-        actions = ttk.Frame(root)
+        actions = ttk.Frame(root, bg=BG_APP)
         actions.pack(fill=tk.X, pady=8)
         ttk.Button(actions, text="Clear", command=self.clear).pack(side=tk.LEFT, padx=4)
 
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        summary_frame = ttk.Frame(self.notebook, padding=8)
-        chart_frame = ttk.Frame(self.notebook, padding=8)
-        map_frame = ttk.Frame(self.notebook, padding=8)
+        summary_frame = ttk.Frame(self.notebook, padding=8, bg=BG_CARD)
+        chart_frame = ttk.Frame(self.notebook, padding=8, bg=BG_CARD)
+        map_frame = ttk.Frame(self.notebook, padding=8, bg=BG_CARD)
+        
+        self.metric_bar = tk.Frame(summary_frame, bg=BG_APP)
+        self.metric_bar.pack(fill=tk.X, pady=(0, 10))
+
+        # 4 карточки
+        self.m_tracks  = self._make_metric_card(self.metric_bar, "Треков", "—")
+        self.m_nets    = self._make_metric_card(self.metric_bar, "Цепей", "—")
+        self.m_wire    = self._make_metric_card(self.metric_bar, "Длина проводов", "—")
+        self.m_conf    = self._make_metric_card(self.metric_bar, "Конфликты", "—")
+        for w in (self.m_tracks, self.m_nets, self.m_wire, self.m_conf):
+            w["frame"].pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 8))
 
         self.notebook.add(summary_frame, text="Summary")
         self.notebook.add(chart_frame, text="Charts")
         self.notebook.add(map_frame, text="Routing map")
 
-        self.summary_text = tk.Text(summary_frame, wrap=tk.WORD, font=("Segoe UI", 11), relief=tk.FLAT)
+        self.summary_text = tk.Text(summary_frame, wrap=tk.WORD, font=("Segoe UI", 11), relief=tk.FLAT, bg=BG_APP)
         summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.summary_text.yview)
         self.summary_text.configure(yscrollcommand=summary_scroll.set)
         self.summary_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         summary_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        chart_container = ttk.Frame(chart_frame)
+        chart_container = ttk.Frame(chart_frame, bg=BG_APP)
         chart_container.pack(fill=tk.BOTH, expand=True)
-        self.chart_canvas = tk.Canvas(chart_container, bg="#f9fafc", highlightthickness=0)
+        self.chart_canvas = tk.Canvas(chart_container, bg=BG_CARD, highlightthickness=0)
         chart_scroll_y = ttk.Scrollbar(chart_container, orient="vertical", command=self.chart_canvas.yview)
         chart_scroll_x = ttk.Scrollbar(chart_container, orient="horizontal", command=self.chart_canvas.xview)
         self.chart_canvas.configure(xscrollcommand=chart_scroll_x.set, yscrollcommand=chart_scroll_y.set)
@@ -103,7 +200,7 @@ class App(tk.Tk):
         chart_container.rowconfigure(0, weight=1)
         chart_container.columnconfigure(0, weight=1)
 
-        map_toolbar = ttk.Frame(map_frame)
+        map_toolbar = ttk.Frame(map_frame, bg=BG_APP)
         map_toolbar.pack(fill=tk.X, pady=(0, 8))
         ttk.Label(map_toolbar, text="Segment page:", style="Header.TLabel").pack(side=tk.LEFT)
         self.prev_button = ttk.Button(map_toolbar, text="◀ Prev", command=self.prev_page)
@@ -120,9 +217,9 @@ class App(tk.Tk):
         self.map_stats = ttk.Label(map_toolbar, text="", foreground="#445")
         self.map_stats.pack(side=tk.RIGHT)
 
-        map_container = ttk.Frame(map_frame)
+        map_container = ttk.Frame(map_frame, bg=BG_APP)
         map_container.pack(fill=tk.BOTH, expand=True)
-        self.map_canvas = tk.Canvas(map_container, bg="white", highlightthickness=0)
+        self.map_canvas = tk.Canvas(map_container, bg=BG_CARD, highlightthickness=0)
         map_scroll_y = ttk.Scrollbar(map_container, orient="vertical", command=self.map_canvas.yview)
         map_scroll_x = ttk.Scrollbar(map_container, orient="horizontal", command=self.map_canvas.xview)
         self.map_canvas.configure(xscrollcommand=map_scroll_x.set, yscrollcommand=map_scroll_y.set)
