@@ -522,7 +522,7 @@ class App(tk.Tk):
         self.zoom_label.config(text=f"{int(self.map_zoom * 100)}%")
 
     def change_zoom(self, factor: float):
-        self.map_zoom = max(0.4, min(2.8, self.map_zoom * factor))
+        self.map_zoom = max(0.01, self.map_zoom * factor)
         self.render_current_page()
 
     def on_zoom_mousewheel(self, event):
