@@ -182,7 +182,12 @@ class App(tk.Tk):
         self.notebook.add(chart_frame, text="Charts")
         self.notebook.add(map_frame, text="Routing map")
 
-        self.summary_text = tk.Text(summary_frame, wrap=tk.WORD, font=("Segoe UI", 11), relief=tk.FLAT, bg=BG_APP)
+        self.summary_text = tk.Text(summary_frame, wrap=tk.WORD,
+            font=("Segoe UI", 11), relief=tk.FLAT,
+            bg=BG_CARD, fg=TEXT_MUT, insertbackground=TEXT_PRI,
+            bd=0, highlightthickness=1, highlightbackground=BORDER,
+            state=tk.DISABLED)
+        
         summary_scroll = ttk.Scrollbar(summary_frame, orient="vertical", command=self.summary_text.yview)
         self.summary_text.configure(yscrollcommand=summary_scroll.set)
         self.summary_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -230,6 +235,17 @@ class App(tk.Tk):
         map_container.rowconfigure(0, weight=1)
         map_container.columnconfigure(0, weight=1)
 
+    def _make_metric_card(self, parent, label: str, value: str) -> dict:
+        f = tk.Frame(parent, bg=BG_CARD, bd=0,
+                    highlightthickness=1, highlightbackground=BORDER)
+        tk.Label(f, text=label, bg=BG_CARD, fg=TEXT_HINT,
+                font=("Segoe UI", 9)).pack(anchor="w", padx=12, pady=(10,0))
+        val_lbl = tk.Label(f, text=value, bg=BG_CARD, fg=ACCENT,
+                        font=("Segoe UI", 20, "bold"))
+        val_lbl.pack(anchor="w", padx=12, pady=(2, 10))
+        return {"frame": f, "label": val_lbl}
+    
+    
     def pick_input(self):
         path = filedialog.askopenfilename(filetypes=[("Text", "*.txt"), ("All files", "*.*")])
         if path:
@@ -287,27 +303,32 @@ class App(tk.Tk):
         return path if os.path.exists(path) else None
 
     def render_summary(self, data: dict):
-        ch = data.get("channel", {})
-        rs = data.get("result", {})
+        ch  = data.get("channel", {})
+        rs  = data.get("result", {})
         segs = rs.get("segments", [])
-        horizontal = sum(1 for s in segs if s.get("type", 0) == 0)
-        vertical = len(segs) - horizontal
+        h_count = sum(1 for s in segs if s.get("type", 0) == 0)
+        v_count = len(segs) - h_count
+        conflicts = rs.get("conflictCount", 0)
 
+        self.m_tracks["label"].config(text=str(rs.get("tracksUsed", "—")), fg=ACCENT)
+        self.m_nets["label"].config(text=str(ch.get("nets", "—")), fg=TEXT_PRI)
+        self.m_wire["label"].config(text=f'{rs.get("wireLength", 0):.0f}', fg=TEXT_PRI)
+        conf_color = COL_RED if conflicts > 0 else COL_GREEN
+        self.m_conf["label"].config(text=str(conflicts), fg=conf_color)
+
+        # Детальный блок
         lines = [
-            "Краткая сводка",
-            "=" * 60,
-            f"Алгоритм: {data.get('algorithmName', '')}",
-            f"Сохранено: {data.get('savedAt', '')}",
-            f"Ширина канала: {ch.get('width', 0)}",
-            f"Число цепей: {ch.get('nets', 0)}",
-            f"Использовано треков: {rs.get('tracksUsed', 0)}",
-            f"Суммарная длина проводов: {rs.get('wireLength', 0):.0f}",
-            f"Конфликтов: {rs.get('conflictCount', 0)}",
-            f"Время выполнения: {rs.get('executionMs', 0):.3f} ms",
-            f"Сегменты: всего {len(segs)}, горизонтальных {horizontal}, вертикальных {vertical}",
+            f"Алгоритм:          {data.get('algorithmName', '')}",
+            f"Сохранено:         {data.get('savedAt', '')}",
+            f"Ширина канала:     {ch.get('width', 0)}",
+            f"Время выполнения:  {rs.get('executionMs', 0):.3f} ms",
+            f"Сегментов всего:   {len(segs)}  "
+            f"(горизонтальных: {h_count}, вертикальных: {v_count})",
         ]
+        self.summary_text.config(state=tk.NORMAL)
         self.summary_text.delete("1.0", tk.END)
         self.summary_text.insert(tk.END, "\n".join(lines))
+        self.summary_text.config(state=tk.DISABLED)
 
     def render_charts(self, data: dict):
         rs = data.get("result", {})
