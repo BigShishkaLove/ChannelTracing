@@ -228,8 +228,8 @@ class App(tk.Tk):
         map_scroll_y = ttk.Scrollbar(map_container, orient="vertical", command=self.map_canvas.yview)
         map_scroll_x = ttk.Scrollbar(map_container, orient="horizontal", command=self.map_canvas.xview)
         self.map_canvas.configure(xscrollcommand=map_scroll_x.set, yscrollcommand=map_scroll_y.set)
-        self.map_canvas.bind("<Control-MouseWheel>", self.on_zoom_mousewheel)
-        self.map_canvas.grid(row=0, column=0, sticky="nsew")
+        self.map_canvas.bind("<Control-MouseWheel>", self.on_zoom_mousewheel, bg=BG_APP)
+        self.map_canvas.grid(row=0, column=0, sticky="nsew", bg=BG_APP)
         map_scroll_y.grid(row=0, column=1, sticky="ns")
         map_scroll_x.grid(row=1, column=0, sticky="ew")
         map_container.rowconfigure(0, weight=1)
@@ -472,53 +472,103 @@ class App(tk.Tk):
         if not self.current_data:
             return
 
-        rs = self.current_data.get("result", {})
-        ch = self.current_data.get("channel", {})
-        width = ch.get("width", 0) or 1
+        rs   = self.current_data.get("result", {})
+        ch   = self.current_data.get("channel", {})
+        width  = ch.get("width", 0) or 1
         tracks = max(1, rs.get("tracksUsed", 1))
-        segs = self.current_segments
+        segs   = self.current_segments
+
         page_count = max(1, (len(segs) + PAGE_SEGMENTS - 1) // PAGE_SEGMENTS)
         self.current_page = min(self.current_page, page_count - 1)
-
         start_idx = self.current_page * PAGE_SEGMENTS
-        end_idx = min(len(segs), start_idx + PAGE_SEGMENTS)
+        end_idx   = min(len(segs), start_idx + PAGE_SEGMENTS)
         page = segs[start_idx:end_idx]
 
         self.prev_button.config(state=(tk.NORMAL if self.current_page > 0 else tk.DISABLED))
-        self.next_button.config(state=(tk.NORMAL if self.current_page < page_count - 1 else tk.DISABLED))
-        self.page_label.config(text=f"Page {self.current_page + 1}/{page_count} · segments {start_idx + 1}-{end_idx}")
+        self.next_button.config(state=(tk.NORMAL if self.current_page < page_count-1 else tk.DISABLED))
+        self.page_label.config(
+            text=f"Стр. {self.current_page+1}/{page_count} · сег. {start_idx+1}–{end_idx}")
 
-        by_track = defaultdict(int)
-        for s in page:
-            by_track[s.get("track", 0)] += 1
-        most_loaded = sorted(by_track.items(), key=lambda x: x[1], reverse=True)[:3]
-        hint = ", ".join(f"t{t}:{cnt}" for t, cnt in most_loaded) if most_loaded else "no segments"
-        self.map_stats.config(text=f"Top tracks on page: {hint}")
+        from collections import Counter
+        by_track = Counter(s.get("track", 0) for s in page)
+        top3 = ", ".join(f"t{t}:{c}" for t, c in by_track.most_common(3))
+        self.map_stats.config(text=f"Топ треки: {top3}" if top3 else "")
 
         self.map_canvas.delete("all")
-        margin_x, margin_y = 70, 40
-        track_h = max(12, int(20 * self.map_zoom))
-        scale = max(3, int(8 * self.map_zoom))
-        drawable_w = max(1000, width * scale)
-        drawable_h = max(600, tracks * track_h)
 
+        margin_x  = 60   # место для подписей треков (Y-ось)
+        margin_bot = 24  # место для подписей колонок (X-ось)
+        margin_top = 8
+
+        track_h = max(8, int(20 * self.map_zoom))
+        scale   = max(0.1, 8 * self.map_zoom)
+
+        drawable_w = max(600, int(width * scale))
+        drawable_h = max(400, tracks * track_h)
+
+        total_w = margin_x + drawable_w
+        total_h = margin_top + drawable_h + margin_bot
+
+        # --- Зебра-фон треков ---
         for t in range(tracks):
-            y = margin_y + t * track_h
-            if t % 2 == 0:
-                self.map_canvas.create_rectangle(margin_x, y, margin_x + drawable_w, y + track_h, fill="#f7f9fc", outline="")
-            self.map_canvas.create_text(margin_x - 8, y + track_h / 2, text=str(t), anchor="e", fill="#6b7280", font=("Segoe UI", 9))
+            y = margin_top + t * track_h
+            bg = BG_PANEL if t % 2 == 0 else BG_APP
+            self.map_canvas.create_rectangle(
+                margin_x, y, margin_x + drawable_w, y + track_h,
+                fill=bg, outline="", bg=BG_APP)
 
+        # --- Y-ось: метки треков ---
+        tick_tracks = max(1, tracks // 40)
+        for t in range(0, tracks, tick_tracks):
+            y = margin_top + t * track_h + track_h // 2
+            self.map_canvas.create_text(
+                margin_x - 4, y, text=str(t),
+                anchor="e", fill=TEXT_HINT, font=("Segoe UI", 9), bg=BG_APP)
+
+        # --- X-ось: метки колонок ---
+        tick_cols = max(1, width // 20)
+        ax_y = margin_top + drawable_h
+        self.map_canvas.create_line(
+            margin_x, ax_y, margin_x + drawable_w, ax_y,
+            fill=BORDER, bg=BG_APP)
+        for col in range(0, width + 1, tick_cols):
+            x = margin_x + int(col * scale)
+            self.map_canvas.create_line(x, ax_y, x, ax_y + 4, fill=BORDER, bg=BG_APP)
+            self.map_canvas.create_text(
+                x, ax_y + 6, text=str(col),
+                anchor="n", fill=TEXT_HINT, font=("Segoe UI", 8), bg=BG_APP)
+
+        # --- Сегменты ---
+        # Видимая область по X (оптимизация при большом width)
+        xl, xr = self.map_canvas.xview(bg=BG_APP)
+        vis_left  = xl * total_w - margin_x
+        vis_right = xr * total_w - margin_x
+
+        seg_h = max(1, int(track_h * 0.35))
         for s in page:
-            track = s.get("track", 0)
-            x1 = margin_x + s.get("start", 0) * scale
-            x2 = margin_x + s.get("end", 0) * scale
-            y = margin_y + track * track_h + track_h / 2
+            track  = s.get("track", 0)
+            sc     = s.get("start", 0) * scale
+            ec     = s.get("end",   0) * scale
+            # Пропустить невидимые и слишком маленькие
+            if ec < vis_left or sc > vis_right:
+                continue
+            if (ec - sc) < 0.4:
+                continue
+            x1 = margin_x + sc
+            x2 = margin_x + ec
+            y  = margin_top + track * track_h + track_h // 2
             color = f"#{(s.get('netId', 1) * 2654435761) & 0xFFFFFF:06x}"
-            self.map_canvas.create_line(x1, y, x2, y, fill=color, width=max(1, int(track_h * 0.3)))
+            self.map_canvas.create_line(
+                x1, y, x2, y, fill=color, width=seg_h, bg=BG_APP)
 
-        self.map_canvas.create_rectangle(margin_x, margin_y, margin_x + drawable_w, margin_y + drawable_h, outline="#94a3b8")
-        self.map_canvas.create_text(margin_x, 16, text="Routing map by segment pages (horizontal only)", anchor="w", font=("Segoe UI", 12, "bold"))
-        self.map_canvas.config(scrollregion=(0, 0, margin_x + drawable_w + 40, margin_y + drawable_h + 40))
+        # --- Рамка + scrollregion ---
+        self.map_canvas.create_rectangle(
+            margin_x, margin_top,
+            margin_x + drawable_w, margin_top + drawable_h,
+            outline=BORDER, bg=BG_APP)
+        self.map_canvas.config(
+            scrollregion=(0, 0, total_w + 20, total_h + 10),
+            bg=BG_APP)
         self.zoom_label.config(text=f"{int(self.map_zoom * 100)}%")
 
     def change_zoom(self, factor: float):
