@@ -195,11 +195,11 @@ class App(tk.Tk):
 
         chart_container = ttk.Frame(chart_frame, bg=BG_APP)
         chart_container.pack(fill=tk.BOTH, expand=True)
-        self.chart_canvas = tk.Canvas(chart_container, bg=BG_CARD, highlightthickness=0)
+        self.chart_canvas = tk.Canvas(chart_container, bg=BG_APP, highlightthickness=0)
         chart_scroll_y = ttk.Scrollbar(chart_container, orient="vertical", command=self.chart_canvas.yview)
         chart_scroll_x = ttk.Scrollbar(chart_container, orient="horizontal", command=self.chart_canvas.xview)
-        self.chart_canvas.configure(xscrollcommand=chart_scroll_x.set, yscrollcommand=chart_scroll_y.set)
-        self.chart_canvas.grid(row=0, column=0, sticky="nsew")
+        self.chart_canvas.configure(xscrollcommand=chart_scroll_x.set, yscrollcommand=chart_scroll_y.set, bg=BG_APP)
+        self.chart_canvas.grid(row=0, column=0, sticky="nsew", bg=BG_APP)
         chart_scroll_y.grid(row=0, column=1, sticky="ns")
         chart_scroll_x.grid(row=1, column=0, sticky="ew")
         chart_container.rowconfigure(0, weight=1)
@@ -234,7 +234,33 @@ class App(tk.Tk):
         map_scroll_x.grid(row=1, column=0, sticky="ew")
         map_container.rowconfigure(0, weight=1)
         map_container.columnconfigure(0, weight=1)
+        
+        chart_toolbar = tk.Frame(chart_frame, bg=BG_APP)
+        chart_toolbar.pack(fill=tk.X, pady=(0, 8))
 
+        tk.Label(chart_toolbar, text="Режим:", bg=BG_APP,
+                fg=TEXT_HINT, font=("Segoe UI", 10)).pack(side=tk.LEFT)
+        self.btn_detail = tk.Button(chart_toolbar, text="Детальный",
+            bg=ACCENT, fg="#ffffff", relief="flat", bd=0,
+            font=("Segoe UI", 10), padx=12, pady=4,
+            command=lambda: self._set_chart_mode("detail"))
+        self.btn_detail.pack(side=tk.LEFT, padx=(6, 0))
+        self.btn_agg = tk.Button(chart_toolbar, text="Агрегированный",
+            bg=BG_CARD, fg=TEXT_MUT, relief="flat", bd=0,
+            font=("Segoe UI", 10), padx=12, pady=4,
+            command=lambda: self._set_chart_mode("agg"))
+        self.btn_agg.pack(side=tk.LEFT, padx=(4, 0))
+        self.chart_mode = "detail"
+
+    def _set_chart_mode(self, mode: str):
+        self.chart_mode = mode
+        self.btn_detail.config(bg=ACCENT if mode=="detail" else BG_CARD,
+                            fg="#ffffff" if mode=="detail" else TEXT_MUT)
+        self.btn_agg.config(bg=ACCENT if mode=="agg" else BG_CARD,
+                            fg="#ffffff" if mode=="agg" else TEXT_MUT)
+        if self.current_data:
+            self.render_charts(self.current_data)
+    
     def _make_metric_card(self, parent, label: str, value: str) -> dict:
         f = tk.Frame(parent, bg=BG_CARD, bd=0,
                     highlightthickness=1, highlightbackground=BORDER)
@@ -334,47 +360,107 @@ class App(tk.Tk):
         rs = data.get("result", {})
         segs = rs.get("segments", [])
         tracks = rs.get("tracksUsed", 1) or 1
-
         self.chart_canvas.delete("all")
-        w = max(self.chart_canvas.winfo_width(), 960)
-        h = max(self.chart_canvas.winfo_height(), 620)
 
-        horizontal = sum(1 for s in segs if s.get("type", 0) == 0)
-        vertical = len(segs) - horizontal
+        cw = max(self.chart_canvas.winfo_width(), 900)
+        ch_h = max(self.chart_canvas.winfo_height(), 500)
+
+        # --- Секция 1: состав сегментов ---
+        h_count = sum(1 for s in segs if s.get("type", 0) == 0)
+        v_count = len(segs) - h_count
         total = max(1, len(segs))
+        x0, y0 = 40, 30
+        bar_w = min(500, cw - 80)
 
-        x0, y0 = 40, 40
-        bw = 500
-        self.chart_canvas.create_text(x0, y0 - 18, text="Состав сегментов", anchor="w", font=("Segoe UI", 13, "bold"))
-        h_w = bw * horizontal / total
-        self.chart_canvas.create_rectangle(x0, y0, x0 + h_w, y0 + 40, fill="#4e79a7", outline="")
-        self.chart_canvas.create_rectangle(x0 + h_w, y0, x0 + bw, y0 + 40, fill="#f28e2b", outline="")
-        self.chart_canvas.create_text(x0, y0 + 62, text=f"Horizontal: {horizontal}", anchor="w", font=("Segoe UI", 10))
-        self.chart_canvas.create_text(x0 + 180, y0 + 62, text=f"Vertical: {vertical}", anchor="w", font=("Segoe UI", 10))
+        self.chart_canvas.create_text(x0, y0 - 14, text="Состав сегментов",
+            anchor="w", font=("Segoe UI", 11, "bold"), fill=TEXT_PRI)
+        # Фон
+        self.chart_canvas.create_rectangle(x0, y0, x0+bar_w, y0+24,
+            fill=BG_CARD, outline=BORDER)
+        # Горизонтальный
+        hw = int(bar_w * h_count / total)
+        self.chart_canvas.create_rectangle(x0, y0, x0+hw, y0+24,
+            fill=ACCENT, outline="")
+        # Вертикальный
+        self.chart_canvas.create_rectangle(x0+hw, y0, x0+bar_w, y0+24,
+            fill=ACCENT2, outline="")
+        self.chart_canvas.create_text(x0, y0+36,
+            text=f"● Горизонтальные: {h_count} ({100*h_count//total}%)",
+            anchor="w", fill=ACCENT, font=("Segoe UI", 10))
+        self.chart_canvas.create_text(x0+260, y0+36,
+            text=f"● Вертикальные: {v_count} ({100*v_count//total}%)",
+            anchor="w", fill=ACCENT2, font=("Segoe UI", 10))
 
-        self.chart_canvas.create_text(40, 150, text="Занятость треков", anchor="w", font=("Segoe UI", 13, "bold"))
+        # --- Секция 2: гистограмма ---
+        hist_top = y0 + 64
+        hist_h = 260
+        hist_left = 50
+        hist_bot = hist_top + hist_h
+
+        self.chart_canvas.create_text(x0, hist_top - 14,
+            text="Занятость треков" + (" (агрегировано)" if self.chart_mode == "agg" else ""),
+            anchor="w", font=("Segoe UI", 11, "bold"), fill=TEXT_PRI)
+
+        # Подготовить данные
+        from collections import Counter
         occ = Counter(s.get("track", 0) for s in segs if s.get("type", 0) == 0)
-        if not occ:
-            self.chart_canvas.config(scrollregion=(0, 0, w, h))
+
+        if self.chart_mode == "detail":
+            bar_data = [occ.get(t, 0) for t in range(tracks)]
+            bar_labels = list(range(tracks))
+        else:
+            bucket = max(1, tracks // 80)
+            groups = []
+            labels = []
+            for i in range(0, tracks, bucket):
+                groups.append(max(occ.get(t, 0) for t in range(i, min(tracks, i+bucket))))
+                labels.append(str(i))
+            bar_data = groups
+            bar_labels = labels
+
+        if not bar_data:
+            self.chart_canvas.config(scrollregion=(0, 0, cw, ch_h))
             return
 
-        max_count = max(occ.values())
-        left, top = 40, 180
-        visible_w = max(700, w - 120)
-        chart_w, chart_h = max(visible_w, min(2200, tracks * 18)), 320
-        bar_w = max(3, chart_w / max(1, tracks))
+        max_val = max(bar_data) or 1
+        n_bars = len(bar_data)
+        chart_w = max(cw - 100, n_bars * 6)
+        bar_unit = chart_w / n_bars
 
-        for t in range(tracks):
-            cnt = occ.get(t, 0)
-            bh = 0 if max_count == 0 else chart_h * cnt / max_count
-            x1 = left + t * bar_w
-            y1 = top + chart_h - bh
-            self.chart_canvas.create_rectangle(x1, y1, x1 + bar_w - 1, top + chart_h, fill="#59a14f", outline="")
+        # Горизонтальные линии сетки (4 уровня)
+        for frac, label in [(1.0, str(max_val)), (0.75, str(int(max_val*0.75))),
+                            (0.5, str(int(max_val*0.5))), (0.25, str(int(max_val*0.25))),
+                            (0.0, "0")]:
+            gy = hist_bot - int(hist_h * frac)
+            self.chart_canvas.create_line(hist_left, gy, hist_left + chart_w, gy,
+                fill=BORDER, dash=(4, 4))
+            self.chart_canvas.create_text(hist_left - 4, gy, text=label,
+                anchor="e", fill=TEXT_HINT, font=("Segoe UI", 9))
 
-        self.chart_canvas.create_rectangle(left, top, left + chart_w, top + chart_h, outline="#555")
-        self.chart_canvas.create_text(left, top + chart_h + 24, text="Track ID →", anchor="w")
-        self.chart_canvas.create_text(left, top - 14, text=f"max segments on track: {max_count}", anchor="w")
-        self.chart_canvas.config(scrollregion=(0, 0, left + chart_w + 80, top + chart_h + 80))
+        # Столбцы
+        for i, val in enumerate(bar_data):
+            bh = int(hist_h * val / max_val)
+            x1 = hist_left + i * bar_unit
+            x2 = x1 + max(1, bar_unit - 1)
+            y1 = hist_bot - bh
+            color = BAR_COLORS[i % len(BAR_COLORS)]
+            self.chart_canvas.create_rectangle(x1, y1, x2, hist_bot,
+                fill=color, outline="")
+            # Метки оси X — каждый ~80px
+            if n_bars <= 40 or i % max(1, n_bars // 20) == 0:
+                self.chart_canvas.create_text(
+                    x1 + bar_unit/2, hist_bot + 12,
+                    text=str(bar_labels[i]),
+                    fill=TEXT_HINT, font=("Segoe UI", 8), anchor="n")
+
+        # Рамка
+        self.chart_canvas.create_rectangle(hist_left, hist_top,
+            hist_left + chart_w, hist_bot, outline=BORDER)
+
+        total_h = hist_bot + 60
+        self.chart_canvas.config(
+            scrollregion=(0, 0, hist_left + chart_w + 60, total_h),
+            bg=BG_APP)
 
     def prepare_map(self, data: dict):
         rs = data.get("result", {})
