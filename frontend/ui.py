@@ -451,10 +451,12 @@ class App(tk.Tk):
         hist_left = 58
         hist_bot  = hist_top + hist_h
 
-        mode_lbl = " (агрегированный)" if self.chart_mode == "agg" else ""
+        if self.chart_mode == "agg":
+            hist_title = "Плотность сегментов по группам треков  (сумма на группу)"
+        else:
+            hist_title = "Занятость треков  (сегментов на трек)"
         self.chart_canvas.create_text(
-            x0, hist_top - 18,
-            text=f"Занятость треков{mode_lbl}",
+            x0, hist_top - 18, text=hist_title,
             anchor="w", font=("Segoe UI", 12, "bold"), fill=TEXT_PRI)
 
         occ = Counter(
@@ -464,12 +466,18 @@ class App(tk.Tk):
             bar_data   = [occ.get(t, 0) for t in range(tracks)]
             bar_labels = [str(t) for t in range(tracks)]
         else:
-            bucket = max(1, tracks // 80)
+            # Always compress to ≤ AGG_BARS bars regardless of track count.
+            # Each bar shows the SUM of segments across its group of tracks,
+            # giving a density picture rather than per-track detail.
+            import math
+            AGG_BARS = 40
+            bucket   = max(1, math.ceil(tracks / AGG_BARS))
             bar_data, bar_labels = [], []
             for i in range(0, tracks, bucket):
-                end = min(tracks, i + bucket)
-                bar_data.append(max(occ.get(t, 0) for t in range(i, end)))
-                bar_labels.append(str(i))
+                end   = min(tracks, i + bucket)
+                total_in_group = sum(occ.get(t, 0) for t in range(i, end))
+                bar_data.append(total_in_group)
+                bar_labels.append(str(i) if end - i == 1 else f"{i}–{end - 1}")
 
         if not bar_data:
             self.chart_canvas.config(
