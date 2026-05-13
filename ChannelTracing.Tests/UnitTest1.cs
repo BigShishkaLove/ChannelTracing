@@ -1,4 +1,4 @@
-﻿using src.Application.Algorithms;
+using src.Application.Algorithms;
 using src.Domain.Entities;
 
 namespace ChannelTracing.Tests;
@@ -190,13 +190,14 @@ public class RoutingAlgorithmsTests
 
         Assert.True(result.HasConflicts);
         Assert.Contains(result.ConflictDescriptions, c => c.Contains("VCG contains cyclic constraints"));
+        Assert.Contains(result.ConflictDescriptions, c => c.Contains("Dogleg/split routing relaxed vertical constraints"));
     }
 
     [Fact]
     public void Yoshimura_CycleFallbackStillProducesHorizontalSegmentsWithoutOverlapConflicts()
     {
         // Literature basis: doglegs are normally needed to break VCG cycles. The current
-        // simplified implementation reports the cycle and then routes greedily; it should
+        // implementation relaxes a cyclic VCG edge as a dogleg/split constraint repair; it should
         // still avoid adding extra horizontal overlap conflicts.
         var channel = new Channel(
             4,
@@ -208,6 +209,66 @@ public class RoutingAlgorithmsTests
         Assert.True(result.HasConflicts);
         Assert.Single(result.ConflictDescriptions);
         Assert.Contains("VCG contains cyclic constraints", result.ConflictDescriptions[0]);
+        Assert.Contains("Dogleg/split routing relaxed vertical constraints", result.ConflictDescriptions[0]);
+        AssertNoHorizontalOverlapOnSameTrack(result);
+    }
+
+
+    [Fact]
+    public void Yoshimura_MergesCompatibleNetsAcrossZonesOntoSharedTrack()
+    {
+        // Yoshimura-Kuh basis: compatible non-overlapping nets can be merged into a
+        // composite net and assigned to the same horizontal track.
+        var channel = new Channel(
+            6,
+            topRow:    new[] { 1, 0, 2, 0, 3, 0 },
+            bottomRow: new[] { 0, 1, 0, 2, 0, 3 });
+
+        var result = new YoshimuraAlgorithm().Route(channel);
+
+        Assert.False(result.HasConflicts);
+        Assert.Equal(1, result.TracksUsed);
+        Assert.Equal(channel.Nets[1].AssignedTrack, channel.Nets[2].AssignedTrack);
+        Assert.Equal(channel.Nets[2].AssignedTrack, channel.Nets[3].AssignedTrack);
+        AssertNoHorizontalOverlapOnSameTrack(result);
+    }
+
+
+    [Fact]
+    public void Yoshimura_ZoneLocalBatchMergingCanMergeIndependentBoundaryPairs()
+    {
+        // Algorithm #1/#2 basis: candidates come from zone boundaries, and independent
+        // compatible pairs can be selected in the same matching-style merge pass.
+        var channel = new Channel(
+            8,
+            topRow:    new[] { 1, 0, 2, 0, 3, 0, 4, 0 },
+            bottomRow: new[] { 0, 1, 0, 2, 0, 3, 0, 4 });
+
+        var result = new YoshimuraAlgorithm().Route(channel);
+
+        Assert.False(result.HasConflicts);
+        Assert.Equal(1, result.TracksUsed);
+        Assert.Equal(channel.Nets[1].AssignedTrack, channel.Nets[2].AssignedTrack);
+        Assert.Equal(channel.Nets[2].AssignedTrack, channel.Nets[3].AssignedTrack);
+        Assert.Equal(channel.Nets[3].AssignedTrack, channel.Nets[4].AssignedTrack);
+        AssertNoHorizontalOverlapOnSameTrack(result);
+    }
+
+    [Fact]
+    public void Yoshimura_DoesNotMergeHorizontallyConflictingNets()
+    {
+        // Yoshimura-Kuh basis: net merging is only legal for nets with no HCG edge.
+        // These intervals share column 1, so they must remain on different tracks.
+        var channel = new Channel(
+            3,
+            topRow:    new[] { 1, 2, 0 },
+            bottomRow: new[] { 0, 1, 2 });
+
+        var result = new YoshimuraAlgorithm().Route(channel);
+
+        Assert.False(result.HasConflicts);
+        Assert.Equal(2, result.TracksUsed);
+        Assert.NotEqual(channel.Nets[1].AssignedTrack, channel.Nets[2].AssignedTrack);
         AssertNoHorizontalOverlapOnSameTrack(result);
     }
 
