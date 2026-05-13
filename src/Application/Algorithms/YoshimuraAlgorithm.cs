@@ -4,14 +4,68 @@ using src.Domain.Entities;
 
 namespace src.Application.Algorithms;
 
+/// <summary>
+/// Yoshimura-Kuh Channel Routing Algorithm.
+///
+/// Reference: T. Yoshimura and E. S. Kuh, "Efficient Algorithms for Channel Routing,"
+/// IEEE Trans. on CAD of Integrated Circuits and Systems, vol. 1, pp. 25-35, 1982.
+///
+/// Pipeline:
+///   1. Build VCG (Vertical Constraint Graph).
+///   2. Build zone representation of the channel.
+///   3. Net-merging phase: for each pair of adjacent zones merge nets
+///      that (a) do not overlap horizontally and (b) are not connected
+///      by a directed VCG path, choosing the best pair via the
+///      cost functions f() / g() from the original paper.
+///   4. Apply the Constrained Left-Edge Algorithm (CLE) on the merged
+///      netlist to assign tracks.
+///   5. Emit horizontal and vertical segments.
+/// </summary>
 public class YoshimuraAlgorithm : RoutingAlgorithmBase
 {
+    // Weight used in the paper's cost functions f() and g().
+    private const int K = 100;
+
     public override string Name => "Yoshimura Algorithm";
 
+    // -------------------------------------------------------------------------
+    // Merged-net representation
+    // A "virtual net" groups one or more original net IDs that have been merged.
+    // Its horizontal span is the union of all constituent nets' spans.
+    // -------------------------------------------------------------------------
+    private sealed class VirtualNet
+    {
+        public int  Id            { get; }          // canonical ID (smallest member)
+        public HashSet<int> Members { get; }        // original net IDs in this group
+        public int  Left          { get; private set; }
+        public int  Right         { get; private set; }
+
+        public VirtualNet(int id, int left, int right)
+        {
+            Id      = id;
+            Members = new HashSet<int> { id };
+            Left    = left;
+            Right   = right;
+        }
+
+        /// <summary>Extend the span to cover <paramref name="other"/>.</summary>
+        public void AbsorbSpan(VirtualNet other)
+        {
+            if (other.Left  < Left)  Left  = other.Left;
+            if (other.Right > Right) Right = other.Right;
+            foreach (var m in other.Members)
+                Members.Add(m);
+        }
+
+        public bool Overlaps(VirtualNet other) =>
+            Left <= other.Right && other.Left <= Right;
+    }
+
+    // -------------------------------------------------------------------------
     protected override int ExecuteRouting(
-        Channel channel,
-        List<Segment> segments,
-        List<string> conflicts)
+        Channel        channel,
+        List<Segment>  segments,
+        List<string>   conflicts)
     {
         var nets = channel.Nets.Values
             .OrderBy(n => n.LeftmostColumn)
@@ -220,19 +274,13 @@ public class YoshimuraAlgorithm : RoutingAlgorithmBase
         int track,
         List<Segment> segments)
     {
-        foreach (var colGroup in net.Contacts.GroupBy(c => c.Column))
+        foreach (var col in net.Contacts.Select(c => c.Column).Distinct())
         {
-            bool hasTop    = colGroup.Any(c => c.Position == ContactPosition.Top);
-            bool hasBottom = colGroup.Any(c => c.Position == ContactPosition.Bottom);
-
-            if (hasTop && hasBottom)
-            {
-                var vSeg = new Segment(
-                    net.Id, SegmentType.Vertical,
-                    colGroup.Key, colGroup.Key, track);
-                segments.Add(vSeg);
-                net.AddSegment(vSeg);
-            }
+            var vSeg = new Segment(
+                net.Id, SegmentType.Vertical,
+                col, col, track);
+            segments.Add(vSeg);
+            net.AddSegment(vSeg);
         }
     }
 }

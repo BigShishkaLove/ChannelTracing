@@ -2,6 +2,7 @@ using src.Application.Algorithms;
 using src.Application.Interfaces;
 using src.Application.Services;
 using src.Infrastructure.IO;
+using src.Domain.Entities;
 
 namespace src;
 
@@ -25,9 +26,12 @@ internal static class Program
 
         foreach (var algorithm in algorithms)
         {
-            var result = algorithm.Route(channel);
+            var channelCopy = new Channel(channel.Width, (int[])channel.TopRow.Clone(), (int[])channel.BottomRow.Clone());
+
+            var result = algorithm.Route(channelCopy);
             store.Save(result);
-            writer.WriteResultToFile(result, Path.Combine(outputDir, $"{RoutingResultStore.Slug(result.AlgorithmName)}.txt"));
+            writer.WriteResultToFile(result,
+                Path.Combine(outputDir, $"{RoutingResultStore.Slug(result.AlgorithmName)}.txt"));
         }
 
         return 0;
